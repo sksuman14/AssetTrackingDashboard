@@ -1,0 +1,548 @@
+import React, { useState, useEffect, useRef } from 'react';
+import axios from 'axios';
+import { format, differenceInMilliseconds } from 'date-fns';
+import { Search, MapPin, Calendar, RefreshCw, Map, Menu, X } from 'lucide-react';
+import MapComponent from './components/MapComponent';
+import MovementCard from './components/MovementCard';
+import { calculateDistance, reverseGeocode, geocode } from './utils/geoUtils';
+import './index.css';
+
+const POSITIONS_KEY = 'device_previous_positions';
+const DISPLACEMENT_THRESHOLD = 100.0;
+const STATIONARY_TIME_THRESHOLD = 10 * 60 * 1000;
+
+function App() {
+  const [centerCoordinates, setCenterCoordinates] = useState([0, 0]);
+  const [zoomLevel, setZoomLevel] = useState(5.0);
+  const [isLoading, setIsLoading] = useState(false);
+  const [deviceLocations, setDeviceLocations] = useState([]);
+  const [filteredDevices, setFilteredDevices] = useState([]);
+  const [allDeviceIds, setAllDeviceIds] = useState(['None']);
+  
+  const [searchQuery, setSearchQuery] = useState('');
+  const [suggestions, setSuggestions] = useState([]);
+  const [searchPin, setSearchPin] = useState(null);
+  
+  const [selectedDeviceId, setSelectedDeviceId] = useState('None');
+  const [selectedDate, setSelectedDate] = useState(null);
+  
+  const [showCard, setShowCard] = useState(false);
+  const [selectedDeviceForCard, setSelectedDeviceForCard] = useState(null);
+  
+  const [showDeviceDialog, setShowDeviceDialog] = useState(false);
+  const [deviceDialogInfo, setDeviceDialogInfo] = useState(null);
+  const [isSidebarOpen, setIsSidebarOpen] = useState(true);
+
+  const previousPositionsRef = useRef({});
+
+  useEffect(() => {
+    loadPreviousPositions();
+  }, []);
+
+  const loadPreviousPositions = () => {
+    try {
+      const storedData = localStorage.getItem(POSITIONS_KEY);
+      if (storedData) {
+        const decodedData = JSON.parse(storedData);
+        previousPositionsRef.current = decodedData;
+        
+        let ids = Object.keys(decodedData).sort();
+        if (!ids.includes('None')) {
+          ids = ['None', ...ids];
+        }
+        setAllDeviceIds(ids);
+      }
+    } catch (e) {
+      console.error('Error loading previous positions', e);
+      previousPositionsRef.current = {};
+      setAllDeviceIds(['None']);
+    }
+    fetchDeviceLocations();
+  };
+
+  const savePreviousPositions = () => {
+    try {
+      localStorage.setItem(POSITIONS_KEY, JSON.stringify(previousPositionsRef.current));
+    } catch (e) {
+      console.error('Error saving previous positions', e);
+    }
+  };
+
+  const fetchDeviceLocations = async (deviceId = selectedDeviceId, date = selectedDate) => {
+    setIsLoading(true);
+    setSearchPin(null);
+
+    try {
+      let url = 'https://d20y38p47doyqp.cloudfront.net/GPS_API_Data_func';
+      if (deviceId && deviceId !== 'None' && date) {
+        const dateStr = format(new Date(date), 'dd-MM-yyyy');
+        url += `?Device_id=${deviceId}&startdate=${dateStr}&enddate=${dateStr}`;
+      }
+
+      const response = await axios.get(url, { validateStatus: false });
+
+      if (response.status === 200) {
+        const data = response.data;
+        const latestDevices = {};
+        const fetchedDevices = [];
+        let positionsUpdated = false;
+
+        data.forEach(device => {
+          const devId = device.Device_id.toString();
+          if (deviceId && deviceId !== 'None' && devId !== deviceId) {
+            return;
+          }
+
+          const timestamp = device.Timestamp.toString();
+          const hasNote = device.Note && device.Note.trim() !== '';
+
+          if (!latestDevices[devId]) {
+            latestDevices[devId] = device;
+          } else {
+            const existingTime = new Date(latestDevices[devId].Timestamp);
+            const currentTime = new Date(timestamp);
+            const existingHasNote = latestDevices[devId].Note && latestDevices[devId].Note.trim() !== '';
+
+            if (currentTime > existingTime) {
+              latestDevices[devId] = device;
+            } else if (currentTime.getTime() === existingTime.getTime()) {
+              if (hasNote && !existingHasNote) {
+                latestDevices[devId] = device;
+              }
+            }
+          }
+        });
+
+        if (!deviceId || deviceId === 'None') {
+          let ids = Object.keys(latestDevices).sort();
+          if (!ids.includes('None')) ids = ['None', ...ids];
+          setAllDeviceIds(ids);
+        }
+
+        const previousPositions = previousPositionsRef.current;
+
+        for (const devId of Object.keys(latestDevices)) {
+          const device = latestDevices[devId];
+          const lat = parseFloat(device.Latitude);
+          const lon = parseFloat(device.Longitude);
+          const currentTimestamp = device.Timestamp.toString();
+          let hasMoved = false;
+          let initialMovedTimestamp = currentTimestamp;
+
+          if (previousPositions[devId]) {
+            const prevData = previousPositions[devId];
+            const prevTimestamp = prevData.timestamp;
+            initialMovedTimestamp = prevData.initial_moved_timestamp;
+
+            if (currentTimestamp === prevTimestamp) {
+              fetchedDevices.push({
+                name: `Device: ${devId}`,
+                latitude: lat,
+                longitude: lon,
+                place: prevData.place || 'Unknown',
+                state: prevData.state || 'Unknown',
+                country: prevData.country || 'Unknown',
+                last_active: currentTimestamp,
+                has_moved: prevData.has_moved || false,
+                note: device.Note || '',
+              });
+              continue;
+            }
+
+            const dist = calculateDistance(prevData.latitude, prevData.longitude, lat, lon);
+            if (dist >= DISPLACEMENT_THRESHOLD) {
+              hasMoved = true;
+              initialMovedTimestamp = currentTimestamp;
+            } else {
+              hasMoved = prevData.has_moved || false;
+            }
+          } else {
+            hasMoved = false;
+            initialMovedTimestamp = currentTimestamp;
+          }
+
+          const geoData = await reverseGeocode(lat, lon);
+          previousPositions[devId] = {
+            latitude: lat,
+            longitude: lon,
+            timestamp: currentTimestamp,
+            initial_moved_timestamp: initialMovedTimestamp || currentTimestamp,
+            has_moved: hasMoved,
+            place: geoData.place,
+            state: geoData.state,
+            country: geoData.country,
+          };
+          positionsUpdated = true;
+
+          fetchedDevices.push({
+            name: `Device: ${devId}`,
+            latitude: lat,
+            longitude: lon,
+            place: geoData.place || 'Unknown',
+            state: geoData.state || 'Unknown',
+            country: geoData.country || 'Unknown',
+            last_active: currentTimestamp,
+            has_moved: hasMoved,
+            note: device.Note || '',
+          });
+        }
+
+        if (!deviceId || deviceId === 'None') {
+          for (const devId of Object.keys(previousPositions)) {
+            if (!latestDevices[devId]) {
+              const prevData = previousPositions[devId];
+              fetchedDevices.push({
+                name: `Device: ${devId}`,
+                latitude: prevData.latitude,
+                longitude: prevData.longitude,
+                place: prevData.place || 'Unknown',
+                state: prevData.state || 'Unknown',
+                country: prevData.country || 'Unknown',
+                last_active: prevData.timestamp,
+                has_moved: prevData.has_moved || false,
+                note: '',
+              });
+            }
+          }
+        }
+
+        if (positionsUpdated) {
+          savePreviousPositions();
+        }
+
+        updateDeviceStatusesForInactivity(fetchedDevices);
+
+      } else if (response.status === 404) {
+        setDeviceLocations([]);
+        setFilteredDevices([]);
+        setCenterCoordinates([0, 0]);
+        setZoomLevel(5.0);
+        if (deviceId && deviceId !== 'None' && date) {
+          alert('No data found for the selected device and date');
+        }
+      } else {
+        handleFallback(deviceId);
+      }
+    } catch (e) {
+      console.error('Error fetching devices', e);
+      handleFallback(deviceId);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleFallback = (deviceId) => {
+    const previousPositions = previousPositionsRef.current;
+    const fetchedDevices = [];
+    if (!deviceId || deviceId === 'None') {
+      for (const devId of Object.keys(previousPositions)) {
+        const prevData = previousPositions[devId];
+        fetchedDevices.push({
+          name: `Device: ${devId}`,
+          latitude: prevData.latitude,
+          longitude: prevData.longitude,
+          place: prevData.place || 'Unknown',
+          state: prevData.state || 'Unknown',
+          country: prevData.country || 'Unknown',
+          last_active: prevData.timestamp,
+          has_moved: prevData.has_moved || false,
+          note: '',
+        });
+      }
+    } else if (previousPositions[deviceId]) {
+      const prevData = previousPositions[deviceId];
+      fetchedDevices.push({
+        name: `Device: ${deviceId}`,
+        latitude: prevData.latitude,
+        longitude: prevData.longitude,
+        place: prevData.place || 'Unknown',
+        state: prevData.state || 'Unknown',
+        country: prevData.country || 'Unknown',
+        last_active: prevData.timestamp,
+        has_moved: prevData.has_moved || false,
+        note: '',
+      });
+    }
+
+    updateDeviceStatusesForInactivity(fetchedDevices);
+  };
+
+  const updateDeviceStatusesForInactivity = (devices) => {
+    const currentTimeUtc = new Date();
+    const previousPositions = previousPositionsRef.current;
+
+    devices.forEach(device => {
+      const devId = device.name.replace('Device: ', '');
+      if (!previousPositions[devId]) return;
+
+      const prevData = previousPositions[devId];
+      const initialMovedTimestamp = prevData.initial_moved_timestamp;
+
+      if (!initialMovedTimestamp) {
+        device.has_moved = false;
+        prevData.has_moved = false;
+        return;
+      }
+
+      try {
+        const initialMovedTime = new Date(initialMovedTimestamp);
+        const timeSince = differenceInMilliseconds(currentTimeUtc, initialMovedTime);
+
+        if (timeSince >= STATIONARY_TIME_THRESHOLD && device.has_moved === true) {
+          device.has_moved = false;
+          prevData.has_moved = false;
+          prevData.initial_moved_timestamp = currentTimeUtc.toISOString();
+        }
+      } catch (e) {
+        console.error(e);
+      }
+    });
+
+    setDeviceLocations(devices);
+    setFilteredDevices(devices);
+    
+    if (devices.length > 0) {
+      setCenterCoordinates([devices[0].latitude, devices[0].longitude]);
+      setZoomLevel(12.0);
+    } else {
+      setCenterCoordinates([0, 0]);
+      setZoomLevel(5.0);
+    }
+
+    savePreviousPositions();
+  };
+
+  const handleSearchUpdate = (e) => {
+    const query = e.target.value;
+    setSearchQuery(query);
+
+    if (!query) {
+      setSuggestions([]);
+      setSearchPin(null);
+      setFilteredDevices(deviceLocations);
+      return;
+    }
+
+    const lowerQuery = query.toLowerCase();
+    const sugs = deviceLocations.filter(d => 
+      d.name.toLowerCase().includes(lowerQuery) ||
+      d.place.toLowerCase().includes(lowerQuery) ||
+      d.state.toLowerCase().includes(lowerQuery) ||
+      d.country.toLowerCase().includes(lowerQuery)
+    );
+    setSuggestions(sugs);
+  };
+
+  const handleSearchSubmit = async (e) => {
+    if (e.key === 'Enter') {
+      const lowerQuery = searchQuery.toLowerCase();
+      const filtered = deviceLocations.filter(d => 
+        d.name.toLowerCase().includes(lowerQuery) ||
+        d.place.toLowerCase().includes(lowerQuery) ||
+        d.state.toLowerCase().includes(lowerQuery) ||
+        d.country.toLowerCase().includes(lowerQuery)
+      );
+      setFilteredDevices(filtered);
+      setSuggestions([]);
+
+      if (filtered.length === 0 && searchQuery) {
+        const result = await geocode(searchQuery);
+        if (result) {
+          setCenterCoordinates([result.lat, result.lon]);
+          setZoomLevel(12.0);
+          setSearchPin(result);
+        } else {
+          alert(`No results found for '${searchQuery}'`);
+        }
+      } else if (filtered.length > 0) {
+        setCenterCoordinates([filtered[0].latitude, filtered[0].longitude]);
+        setZoomLevel(12.0);
+        setSearchPin(null);
+      }
+    }
+  };
+
+  const selectSuggestion = (sug) => {
+    setSearchQuery(sug.place);
+    setSuggestions([]);
+    setCenterCoordinates([sug.latitude, sug.longitude]);
+    setZoomLevel(12.0);
+    setSearchPin(null);
+  };
+
+  const onDeviceSelect = (e) => {
+    const val = e.target.value;
+    setSelectedDeviceId(val);
+    if (val && val !== 'None' && selectedDate) {
+      fetchDeviceLocations(val, selectedDate);
+    } else if (val === 'None') {
+      fetchDeviceLocations('None', null);
+    }
+  };
+
+  const onDateSelect = (e) => {
+    const val = e.target.value;
+    setSelectedDate(val);
+    if (selectedDeviceId && selectedDeviceId !== 'None' && val) {
+      fetchDeviceLocations(selectedDeviceId, val);
+    }
+  };
+
+  const handleMarkerClick = (device) => {
+    setSelectedDeviceForCard(device.name);
+    setDeviceDialogInfo(device);
+    setShowDeviceDialog(true);
+  };
+
+  return (
+    <div className="app-container">
+      <header className="dashboard-header">
+        <div className="header-left">
+          <button 
+            className="menu-toggle-btn" 
+            onClick={() => setIsSidebarOpen(!isSidebarOpen)}
+          >
+            {isSidebarOpen ? <X size={24} /> : <Menu size={24} />}
+          </button>
+          <div className="dashboard-brand">
+            <div className="brand-icon">
+              <Map size={24} />
+            </div>
+            <h1 className="brand-title">Asset Tracking</h1>
+          </div>
+        </div>
+      </header>
+
+      <div className="dashboard-content">
+        <aside className={`dashboard-sidebar ${!isSidebarOpen ? 'closed' : ''}`}>
+          <div className="sidebar-controls">
+          <div className="control-section">
+            <span className="control-label">Search</span>
+            <div className="input-group">
+              <Search size={18} className="input-icon" />
+              <input 
+                type="text" 
+                className="glass-input" 
+                placeholder="Search Location..." 
+                value={searchQuery}
+                onChange={handleSearchUpdate}
+                onKeyDown={handleSearchSubmit}
+              />
+              {suggestions.length > 0 && (
+                <ul className="suggestions-list glass-panel" style={{ padding: 0 }}>
+                  {suggestions.map((s, i) => (
+                    <li key={i} className="suggestion-item" onClick={() => selectSuggestion(s)}>
+                      <div className="suggestion-title">{s.place}</div>
+                      <div className="suggestion-subtitle">{s.state}, {s.country} - {s.name}</div>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          </div>
+
+          <div className="control-section">
+            <span className="control-label">Device Selection</span>
+            <div className="input-group">
+              <MapPin size={18} className="input-icon" />
+              <select 
+                className="glass-input" 
+                value={selectedDeviceId || 'None'}
+                onChange={onDeviceSelect}
+              >
+                {allDeviceIds.map(id => (
+                  <option key={id} value={id}>{id}</option>
+                ))}
+              </select>
+            </div>
+          </div>
+
+          <div className="control-section">
+            <span className="control-label">Filter by Date</span>
+            <div className="input-group">
+              <Calendar size={18} className="input-icon" />
+              <input 
+                type="date" 
+                className="glass-input" 
+                value={selectedDate || ''}
+                onChange={onDateSelect}
+                min="2020-01-01"
+                max={new Date().toISOString().split('T')[0]}
+              />
+            </div>
+          </div>
+
+          <button 
+            className="glass-button" 
+            style={{ marginTop: 'auto', display: 'flex', gap: '8px' }}
+            onClick={() => {
+              setSelectedDeviceId('None');
+              setSelectedDate('');
+              fetchDeviceLocations('None', null);
+            }}
+            disabled={isLoading}
+          >
+            {isLoading ? <div className="loading-spinner" style={{width: 18, height: 18}} /> : <RefreshCw size={18} />}
+            {isLoading ? 'Syncing...' : 'Refresh Data'}
+          </button>
+        </div>
+      </aside>
+
+      <div className="map-area">
+        <MapComponent 
+          centerCoordinates={centerCoordinates}
+          zoomLevel={zoomLevel}
+          deviceLocations={filteredDevices}
+          searchPin={searchPin}
+          onDeviceClick={handleMarkerClick}
+        />
+      </div>
+    </div>
+
+      {showDeviceDialog && deviceDialogInfo && (
+        <div className="movement-card-overlay glass-panel device-dialog" style={{ padding: '20px', width: 'auto', maxHeight: 'auto' }}>
+          <h3>{deviceDialogInfo.name}</h3>
+          <p>Latitude: {deviceDialogInfo.latitude.toFixed(3)}</p>
+          <p>Longitude: {deviceDialogInfo.longitude.toFixed(3)}</p>
+          <p>Place: {deviceDialogInfo.place}</p>
+          <p>State: {deviceDialogInfo.state}</p>
+          <p>Country: {deviceDialogInfo.country}</p>
+          <p>Last Active: {deviceDialogInfo.last_active}</p>
+          <p style={{ 
+            color: deviceDialogInfo.has_moved ? '#ef4444' : '#22c55e', 
+            fontWeight: 'bold',
+            marginTop: '8px'
+          }}>
+            Status: {deviceDialogInfo.has_moved ? "Moved (>100m)" : "Stationary (<100m or >10 min)"}
+          </p>
+          {deviceDialogInfo.note && (
+            <p style={{ color: '#f59e0b', fontStyle: 'italic', marginTop: '8px' }}>
+              Note: {deviceDialogInfo.note}
+            </p>
+          )}
+
+          <div className="device-dialog-actions">
+            <button className="glass-button" onClick={() => setShowDeviceDialog(false)} style={{ background: 'rgba(255,255,255,0.1)', borderColor: 'rgba(255,255,255,0.2)' }}>
+              Close
+            </button>
+            <button className="glass-button" onClick={() => {
+              setShowDeviceDialog(false);
+              setShowCard(true);
+            }}>
+              Check Movements
+            </button>
+          </div>
+        </div>
+      )}
+
+      {showCard && (
+        <MovementCard 
+          selectedDeviceId={selectedDeviceForCard} 
+          onClose={() => setShowCard(false)} 
+        />
+      )}
+    </div>
+  );
+}
+
+export default App;

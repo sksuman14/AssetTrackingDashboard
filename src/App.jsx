@@ -6,6 +6,12 @@ import MapComponent from './components/MapComponent';
 import MovementCard from './components/MovementCard';
 import { calculateDistance, reverseGeocode, geocode } from './utils/geoUtils';
 import './index.css';
+import './App.css';
+
+import img1 from './assets/images/1.jpg';
+import img2 from './assets/images/2.jpg';
+import img3 from './assets/images/3.jpg';
+import img4 from './assets/images/4.jpg';
 
 const POSITIONS_KEY = 'device_previous_positions';
 const DISPLACEMENT_THRESHOLD = 100.0;
@@ -411,6 +417,12 @@ function App() {
             <h1 className="brand-title">Asset Tracking</h1>
           </div>
         </div>
+        <nav className="header-nav">
+          <ul className="nav-links">
+            <li><a href="#datasheet">Datasheet</a></li>
+            <li><a href="#deployment">Deployment</a></li>
+          </ul>
+        </nav>
       </header>
 
       <div className="dashboard-content">
@@ -488,14 +500,106 @@ function App() {
         </div>
       </aside>
 
-      <div className="map-area">
-        <MapComponent 
-          centerCoordinates={centerCoordinates}
-          zoomLevel={zoomLevel}
-          deviceLocations={filteredDevices}
-          searchPin={searchPin}
-          onDeviceClick={handleMarkerClick}
-        />
+      <div className="main-scroll-container">
+        <div className="map-area">
+          <MapComponent 
+            centerCoordinates={centerCoordinates}
+            zoomLevel={zoomLevel}
+            deviceLocations={filteredDevices}
+            searchPin={searchPin}
+            onDeviceClick={handleMarkerClick}
+          />
+        </div>
+
+        <section id="datasheet" className="specifications-section">
+          <div className="section-header">
+            <h2 className="section-title">Specifications Explorer</h2>
+            <p className="section-subtitle">Technical details, compliance, and device capabilities.</p>
+          </div>
+          <div className="specs-grid">
+            <div className="spec-card glass-panel">
+              <div className="spec-icon-wrapper">🔋</div>
+              <h3>Battery & Power</h3>
+              <ul>
+                <li>5000mAh Li-Polymer</li>
+                <li>Up to 6 months standby</li>
+                <li>Solar charging support</li>
+              </ul>
+            </div>
+            <div className="spec-card glass-panel">
+              <div className="spec-icon-wrapper">📡</div>
+              <h3>Connectivity</h3>
+              <ul>
+                <li>4G LTE-M / NB-IoT</li>
+                <li>LoRaWAN & BLE 5.2</li>
+                <li>Fallback to 2G Network</li>
+              </ul>
+            </div>
+            <div className="spec-card glass-panel">
+              <div className="spec-icon-wrapper">🛡️</div>
+              <h3>Enclosure & Safety</h3>
+              <ul>
+                <li>IP67 Waterproof</li>
+                <li>IK08 Impact Rated</li>
+                <li>Tamper detection sensor</li>
+              </ul>
+            </div>
+            <div className="spec-card glass-panel">
+              <div className="spec-icon-wrapper">📍</div>
+              <h3>Positioning</h3>
+              <ul>
+                <li>Multi-GNSS (GPS, GLONASS)</li>
+                <li>Wi-Fi Positioning fallback</li>
+                <li>Cell ID localization</li>
+              </ul>
+            </div>
+          </div>
+        </section>
+
+        <section id="deployment" className="deployment-section">
+          <div className="section-header">
+            <h2 className="section-title">Deployment Scenarios</h2>
+            <p className="section-subtitle">Visualizing real-world applications and installations.</p>
+          </div>
+          <div className="deployment-grid">
+            <div className="deployment-card glass-panel">
+              <div className="deployment-img-wrapper">
+                <img src={img1} alt="Deployment Image 1" className="deployment-img" />
+              </div>
+              <div className="deployment-info">
+                <h3>Deployment 1</h3>
+              </div>
+
+            </div>
+            <div className="deployment-card glass-panel">
+              <div className="deployment-img-wrapper">
+                <img src={img2} alt="Deployment Image 2" className="deployment-img" />
+              </div>
+              <div className="deployment-info">
+                <h3>Deployment 2</h3>
+              </div>
+
+            </div>
+            <div className="deployment-card glass-panel">
+              <div className="deployment-img-wrapper">
+                <img src={img3} alt="Deployment Image 3" className="deployment-img" />
+              </div>
+              <div className="deployment-info">
+                <h3>Deployment 3</h3>
+              </div>
+
+            </div>
+            <div className="deployment-card glass-panel">
+              <div className="deployment-img-wrapper">
+                <img src={img4} alt="Deployment Image 4" className="deployment-img" />
+              </div>
+              <div className="deployment-info">
+                <h3>Deployment 4</h3>
+              </div>
+
+            </div>
+          </div>
+        </section>
       </div>
     </div>
 

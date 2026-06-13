@@ -182,3 +182,208 @@
     border-right-color: var(--border);
   }
 }
+
+/* Scroll Container and Navigation Bar Styles */
+.header-nav {
+  margin-left: auto;
+}
+
+.nav-links {
+  display: flex;
+  list-style: none;
+  gap: 24px;
+  margin: 0;
+  padding: 0;
+}
+
+.nav-links a {
+  color: rgba(255, 255, 255, 0.7);
+  text-decoration: none;
+  font-size: 0.95rem;
+  font-weight: 500;
+  transition: all 0.3s ease;
+  position: relative;
+  padding: 6px 0;
+}
+
+.nav-links a:hover {
+  color: #3b82f6;
+}
+
+.nav-links a::after {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  width: 0;
+  height: 2px;
+  background-color: #3b82f6;
+  transition: width 0.3s ease;
+}
+
+.nav-links a:hover::after {
+  width: 100%;
+}
+
+.main-scroll-container {
+  flex-grow: 1;
+  height: 100%;
+  overflow-y: auto;
+  scroll-behavior: smooth;
+  background: #0f172a;
+}
+
+.map-area {
+  height: 70vh;
+  min-height: 500px;
+  width: 100%;
+  position: relative;
+}
+
+/* Sections General Styling */
+.specifications-section,
+.deployment-section {
+  padding: 60px 40px;
+  border-top: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.section-header {
+  margin-bottom: 40px;
+}
+
+.section-title {
+  font-size: 1.75rem;
+  font-weight: 700;
+  color: white;
+  margin: 0 0 8px 0;
+  letter-spacing: -0.5px;
+}
+
+.section-subtitle {
+  font-size: 1rem;
+  color: rgba(255, 255, 255, 0.6);
+  margin: 0;
+}
+
+/* Specifications Section Styles */
+.specs-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 24px;
+}
+
+.spec-card {
+  padding: 24px;
+  transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1), box-shadow 0.3s ease;
+}
+
+.spec-card:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.4);
+  border-color: rgba(255, 255, 255, 0.2);
+}
+
+.spec-icon-wrapper {
+  font-size: 2rem;
+  margin-bottom: 16px;
+}
+
+.spec-card h3 {
+  font-size: 1.15rem;
+  margin: 0 0 12px 0;
+  color: white;
+}
+
+.spec-card ul {
+  padding-left: 20px;
+  margin: 0;
+  color: rgba(255, 255, 255, 0.7);
+  font-size: 0.9rem;
+}
+
+.spec-card li {
+  margin-bottom: 6px;
+}
+
+/* Deployment Section Styles */
+.deployment-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 24px;
+}
+
+.deployment-card {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1), box-shadow 0.3s ease;
+}
+
+.deployment-card:hover {
+  transform: translateY(-6px);
+  box-shadow: 0 16px 36px rgba(0, 0, 0, 0.5);
+  border-color: rgba(255, 255, 255, 0.2);
+}
+
+.deployment-img-wrapper {
+  position: relative;
+  width: 100%;
+  height: 220px;
+  overflow: hidden;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.deployment-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  transition: transform 0.5s ease;
+}
+
+.deployment-card:hover .deployment-img {
+  transform: scale(1.06);
+}
+
+.deployment-info {
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  flex-grow: 1;
+}
+
+.deployment-info h3 {
+  font-size: 1.1rem;
+  margin: 0 0 8px 0;
+  color: white;
+}
+
+.deployment-info p {
+  font-size: 0.85rem;
+  color: rgba(255, 255, 255, 0.6);
+  margin: 0;
+  line-height: 1.4;
+}
+
+/* Responsive Grid and Section Layouts */
+@media (max-width: 1200px) {
+  .deployment-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (max-width: 768px) {
+  .specifications-section,
+  .deployment-section {
+    padding: 40px 20px;
+  }
+
+  .deployment-grid {
+    grid-template-columns: 1fr;
+    gap: 20px;
+  }
+  
+  .deployment-img-wrapper {
+    height: 180px;
+  }
+}
+

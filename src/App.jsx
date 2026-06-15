@@ -18,7 +18,7 @@ const DISPLACEMENT_THRESHOLD = 100.0;
 const STATIONARY_TIME_THRESHOLD = 10 * 60 * 1000;
 
 function App() {
-  const [centerCoordinates, setCenterCoordinates] = useState([0, 0]);
+  const [centerCoordinates, setCenterCoordinates] = useState([20.5937, 78.9629]);
   const [zoomLevel, setZoomLevel] = useState(5.0);
   const [isLoading, setIsLoading] = useState(false);
   const [deviceLocations, setDeviceLocations] = useState([]);
@@ -37,7 +37,7 @@ function App() {
   
   const [showDeviceDialog, setShowDeviceDialog] = useState(false);
   const [deviceDialogInfo, setDeviceDialogInfo] = useState(null);
-  const [isSidebarOpen, setIsSidebarOpen] = useState(true);
+  const [isSidebarOpen, setIsSidebarOpen] = useState(window.innerWidth > 768);
 
   const previousPositionsRef = useRef({});
 
@@ -81,7 +81,16 @@ function App() {
     try {
       let url = 'https://d20y38p47doyqp.cloudfront.net/GPS_API_Data_func';
       if (deviceId && deviceId !== 'None' && date) {
-        const dateStr = format(new Date(date), 'dd-MM-yyyy');
+        let dateStr = '';
+        if (typeof date === 'string') {
+          const parts = date.split('-');
+          if (parts.length === 3) {
+            dateStr = `${parts[2]}-${parts[1]}-${parts[0]}`;
+          }
+        }
+        if (!dateStr) {
+          dateStr = format(new Date(date), 'dd-MM-yyyy');
+        }
         url += `?Device_id=${deviceId}&startdate=${dateStr}&enddate=${dateStr}`;
       }
 
@@ -126,6 +135,7 @@ function App() {
         }
 
         const previousPositions = previousPositionsRef.current;
+        const devicesToGeocode = [];
 
         for (const devId of Object.keys(latestDevices)) {
           const device = latestDevices[devId];
@@ -134,6 +144,9 @@ function App() {
           const currentTimestamp = device.Timestamp.toString();
           let hasMoved = false;
           let initialMovedTimestamp = currentTimestamp;
+          let place = 'Loading...';
+          let state = 'Unknown';
+          let country = 'Unknown';
 
           if (previousPositions[devId]) {
             const prevData = previousPositions[devId];
@@ -162,31 +175,28 @@ function App() {
             } else {
               hasMoved = prevData.has_moved || false;
             }
-          } else {
-            hasMoved = false;
-            initialMovedTimestamp = currentTimestamp;
-          }
 
-          const geoData = await reverseGeocode(lat, lon);
-          previousPositions[devId] = {
-            latitude: lat,
-            longitude: lon,
-            timestamp: currentTimestamp,
-            initial_moved_timestamp: initialMovedTimestamp || currentTimestamp,
-            has_moved: hasMoved,
-            place: geoData.place,
-            state: geoData.state,
-            country: geoData.country,
-          };
-          positionsUpdated = true;
+            if (prevData.latitude === lat && prevData.longitude === lon && prevData.place) {
+              place = prevData.place;
+              state = prevData.state;
+              country = prevData.country;
+            } else {
+              place = prevData.place ? `${prevData.place} (Updating...)` : 'Loading...';
+              state = prevData.state || 'Unknown';
+              country = prevData.country || 'Unknown';
+              devicesToGeocode.push({ devId, lat, lon, currentTimestamp, initialMovedTimestamp, hasMoved });
+            }
+          } else {
+            devicesToGeocode.push({ devId, lat, lon, currentTimestamp, initialMovedTimestamp, hasMoved });
+          }
 
           fetchedDevices.push({
             name: `Device: ${devId}`,
             latitude: lat,
             longitude: lon,
-            place: geoData.place || 'Unknown',
-            state: geoData.state || 'Unknown',
-            country: geoData.country || 'Unknown',
+            place: place,
+            state: state,
+            country: country,
             last_active: currentTimestamp,
             has_moved: hasMoved,
             note: device.Note || '',
@@ -212,11 +222,11 @@ function App() {
           }
         }
 
-        if (positionsUpdated) {
-          savePreviousPositions();
-        }
-
         updateDeviceStatusesForInactivity(fetchedDevices);
+
+        if (devicesToGeocode.length > 0) {
+          triggerBackgroundGeocoding(devicesToGeocode);
+        }
 
       } else if (response.status === 404) {
         setDeviceLocations([]);
@@ -311,11 +321,60 @@ function App() {
       setCenterCoordinates([devices[0].latitude, devices[0].longitude]);
       setZoomLevel(12.0);
     } else {
-      setCenterCoordinates([0, 0]);
+      setCenterCoordinates([20.5937, 78.9629]);
       setZoomLevel(5.0);
     }
 
     savePreviousPositions();
+  };
+
+  const triggerBackgroundGeocoding = async (devices) => {
+    const previousPositions = previousPositionsRef.current;
+    for (const item of devices) {
+      const { devId, lat, lon, currentTimestamp, initialMovedTimestamp, hasMoved } = item;
+      try {
+        const geoData = await reverseGeocode(lat, lon);
+        
+        previousPositions[devId] = {
+          latitude: lat,
+          longitude: lon,
+          timestamp: currentTimestamp,
+          initial_moved_timestamp: initialMovedTimestamp || currentTimestamp,
+          has_moved: hasMoved,
+          place: geoData.place,
+          state: geoData.state,
+          country: geoData.country,
+        };
+
+        setDeviceLocations(prev => prev.map(d => {
+          if (d.name === `Device: ${devId}`) {
+            return {
+              ...d,
+              place: geoData.place || 'Unknown',
+              state: geoData.state || 'Unknown',
+              country: geoData.country || 'Unknown'
+            };
+          }
+          return d;
+        }));
+
+        setFilteredDevices(prev => prev.map(d => {
+          if (d.name === `Device: ${devId}`) {
+            return {
+              ...d,
+              place: geoData.place || 'Unknown',
+              state: geoData.state || 'Unknown',
+              country: geoData.country || 'Unknown'
+            };
+          }
+          return d;
+        }));
+
+        savePreviousPositions();
+      } catch (e) {
+        console.error(`Background geocoding failed for device ${devId}:`, e);
+      }
+    }
   };
 
   const handleSearchUpdate = (e) => {
@@ -331,10 +390,10 @@ function App() {
 
     const lowerQuery = query.toLowerCase();
     const sugs = deviceLocations.filter(d => 
-      d.name.toLowerCase().includes(lowerQuery) ||
-      d.place.toLowerCase().includes(lowerQuery) ||
-      d.state.toLowerCase().includes(lowerQuery) ||
-      d.country.toLowerCase().includes(lowerQuery)
+      (d.name && d.name.toLowerCase().includes(lowerQuery)) ||
+      (d.place && d.place.toLowerCase().includes(lowerQuery)) ||
+      (d.state && d.state.toLowerCase().includes(lowerQuery)) ||
+      (d.country && d.country.toLowerCase().includes(lowerQuery))
     );
     setSuggestions(sugs);
   };
@@ -343,10 +402,10 @@ function App() {
     if (e.key === 'Enter') {
       const lowerQuery = searchQuery.toLowerCase();
       const filtered = deviceLocations.filter(d => 
-        d.name.toLowerCase().includes(lowerQuery) ||
-        d.place.toLowerCase().includes(lowerQuery) ||
-        d.state.toLowerCase().includes(lowerQuery) ||
-        d.country.toLowerCase().includes(lowerQuery)
+        (d.name && d.name.toLowerCase().includes(lowerQuery)) ||
+        (d.place && d.place.toLowerCase().includes(lowerQuery)) ||
+        (d.state && d.state.toLowerCase().includes(lowerQuery)) ||
+        (d.country && d.country.toLowerCase().includes(lowerQuery))
       );
       setFilteredDevices(filtered);
       setSuggestions([]);
@@ -430,7 +489,13 @@ function App() {
           <div className="sidebar-controls">
           <div className="control-section">
             <span className="control-label">Search</span>
-            <div className="input-group">
+            <form 
+              onSubmit={(e) => {
+                e.preventDefault();
+                handleSearchSubmit({ key: 'Enter' });
+              }}
+              className="input-group"
+            >
               <Search size={18} className="input-icon" />
               <input 
                 type="text" 
@@ -450,7 +515,7 @@ function App() {
                   ))}
                 </ul>
               )}
-            </div>
+            </form>
           </div>
 
           <div className="control-section">

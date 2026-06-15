@@ -25,8 +25,19 @@ export default function MovementCard({ onClose, selectedDeviceId }) {
     setError(null);
     setFilteredData([]);
 
-    const formattedStart = format(new Date(startDate), 'dd-MM-yyyy');
-    const formattedEnd = format(new Date(endDate), 'dd-MM-yyyy');
+    const formatDateString = (dateInput) => {
+      if (!dateInput) return '';
+      if (typeof dateInput === 'string') {
+        const parts = dateInput.split('-');
+        if (parts.length === 3) {
+          return `${parts[2]}-${parts[1]}-${parts[0]}`;
+        }
+      }
+      return format(new Date(dateInput), 'dd-MM-yyyy');
+    };
+
+    const formattedStart = formatDateString(startDate);
+    const formattedEnd = formatDateString(endDate);
 
     const cleanDeviceId = selectedDeviceId.replace("Device: ", "").trim();
     const url = `https://d20y38p47doyqp.cloudfront.net/GPS_API_Data_func?Device_id=${cleanDeviceId}&startdate=${formattedStart}&enddate=${formattedEnd}`;

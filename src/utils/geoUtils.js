@@ -14,13 +14,18 @@ export const calculateDistance = (lat1, lon1, lat2, lon2) => {
 };
 
 export const reverseGeocode = async (lat, lon) => {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 3000);
+
   try {
     const url = `https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lon}&format=json&zoom=18&addressdetails=1`;
     const response = await fetch(url, {
+      signal: controller.signal,
       headers: {
         'User-Agent': 'CloudSenseAppReact/1.0 (contact@example.com)'
       }
     });
+    clearTimeout(timeoutId);
     
     if (response.ok) {
       const data = await response.json();
@@ -49,19 +54,25 @@ export const reverseGeocode = async (lat, lon) => {
       return { place: 'Unknown', state: 'Unknown', country: 'Unknown' };
     }
   } catch (e) {
-    console.error('Error during reverse geocoding:', e);
+    clearTimeout(timeoutId);
+    console.error('Error during reverse geocoding:', e.name === 'AbortError' ? 'Timeout' : e);
     return { place: 'Unknown', state: 'Unknown', country: 'Unknown' };
   }
 };
 
 export const geocode = async (query) => {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 3000);
+
   try {
     const url = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(query)}&format=json`;
     const response = await fetch(url, {
+      signal: controller.signal,
       headers: {
         'User-Agent': 'CloudSenseAppReact/1.0 (contact@example.com)'
       }
     });
+    clearTimeout(timeoutId);
 
     if (response.ok) {
       const data = await response.json();
@@ -74,7 +85,8 @@ export const geocode = async (query) => {
     }
     return null;
   } catch (e) {
-    console.error('Error during geocoding:', e);
+    clearTimeout(timeoutId);
+    console.error('Error during geocoding:', e.name === 'AbortError' ? 'Timeout' : e);
     return null;
   }
 };
